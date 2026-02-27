@@ -75,22 +75,22 @@ canvas#uiCanvas {
 #levelBanner.show { opacity:1; }
 #levelTitle { color:#F0C842; font-size:clamp(22px,5vw,32px); letter-spacing:0.2em; text-shadow:0 0 24px #F0C842; }
 #levelSub { color:#D0E8FF; font-size:clamp(13px,3vw,16px); letter-spacing:0.12em; margin-top:6px; opacity:0.8; }
-#gameOver {
+#flockLost {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  z-index:8; text-align:center; pointer-events:none;
+  display:none; opacity:0; transition:opacity 0.5s ease;
+}
+#flockLost.show { display:block; opacity:1; pointer-events:all; cursor:pointer; }
+#lostTitle { color:#E05535; font-size:clamp(28px,6vw,40px); letter-spacing:0.2em; text-shadow:0 0 28px #E05535; }
+#lostSub { color:#D0E8FF; font-size:clamp(13px,3vw,16px); letter-spacing:0.12em; margin-top:10px; opacity:0.8; }
+#levelClear {
   position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
   z-index:8; text-align:center; pointer-events:none;
   opacity:0; transition:opacity 0.5s ease;
 }
-#gameOver.show { opacity:1; pointer-events:all; cursor:pointer; }
-#gameOverTitle { color:#E05535; font-size:clamp(28px,6vw,40px); letter-spacing:0.2em; text-shadow:0 0 28px #E05535; }
-#gameOverSub { color:#D0E8FF; font-size:clamp(13px,3vw,16px); letter-spacing:0.12em; margin-top:10px; opacity:0.8; }
-#winScreen {
-  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-  z-index:8; text-align:center; pointer-events:none;
-  opacity:0; transition:opacity 0.5s ease;
-}
-#winScreen.show { opacity:1; pointer-events:all; cursor:pointer; }
-#winTitle { color:#F0C842; font-size:clamp(28px,6vw,40px); letter-spacing:0.2em; text-shadow:0 0 28px #F0C842; }
-#winSub { color:#D0E8FF; font-size:clamp(13px,3vw,16px); letter-spacing:0.12em; margin-top:10px; opacity:0.8; }
+#levelClear.show { opacity:1; pointer-events:all; cursor:pointer; }
+#clearTitle { color:#F0C842; font-size:clamp(28px,6vw,40px); letter-spacing:0.2em; text-shadow:0 0 28px #F0C842; }
+#clearSub { color:#D0E8FF; font-size:clamp(13px,3vw,16px); letter-spacing:0.12em; margin-top:10px; opacity:0.8; }
 #chargeArc {
   position:fixed; pointer-events:none; z-index:3;
   top:0; left:0; width:100%; height:100%;
@@ -178,13 +178,13 @@ canvas#uiCanvas {
   <div id="levelTitle">LEVEL 1</div>
   <div id="levelSub">Open Sky</div>
 </div>
-<div id="gameOver">
-  <div id="gameOverTitle">FLOCK LOST</div>
-  <div id="gameOverSub">Your flock dwindled below 30.<br>Tap to restart.</div>
+<div id="flockLost">
+  <div id="lostTitle">FLOCK LOST</div>
+  <div id="lostSub">Your flock dwindled below 30.<br>Tap to restart.</div>
 </div>
-<div id="winScreen">
-  <div id="winTitle">LEVEL CLEAR</div>
-  <div id="winSub" id="winSubText"></div>
+<div id="levelClear">
+  <div id="clearTitle">LEVEL CLEAR</div>
+  <div id="clearSub"></div>
 </div>
 
 <!-- Vignette -->
@@ -759,8 +759,8 @@ function startLevel(lvlIndex) {
   setTimeout(() => banner.classList.remove('show'), 2000);
 
   document.getElementById('hud').classList.remove('hidden');
-  document.getElementById('gameOver').classList.remove('show');
-  document.getElementById('winScreen').classList.remove('show');
+  document.getElementById('flockLost').classList.remove('show');
+  document.getElementById('levelClear').classList.remove('show');
   updateHUD();
   levelStartAt = performance.now();
 }
@@ -788,14 +788,14 @@ canvas.addEventListener('pointerdown', (e) => {
   pointerActive = true;
 });
 
-document.getElementById('gameOver').addEventListener('pointerdown', () => {
-  document.getElementById('gameOver').classList.remove('show');
+document.getElementById('flockLost').addEventListener('pointerdown', () => {
+  document.getElementById('flockLost').classList.remove('show');
   gameState = 'playing';
   startLevel(currentLevel);
 });
 
-document.getElementById('winScreen').addEventListener('pointerdown', () => {
-  document.getElementById('winScreen').classList.remove('show');
+document.getElementById('levelClear').addEventListener('pointerdown', () => {
+  document.getElementById('levelClear').classList.remove('show');
   const next = currentLevel + 1;
   if (next < LEVELS.length) {
     gameState = 'playing';
@@ -1203,7 +1203,7 @@ function updateGame(dt) {
   // Guard: don't check lose until at least 2s into level (prevents instant-lose on start)
   if (totalAlive < 30 && gameState === 'playing' && (performance.now() - levelStartAt) > 2000) {
     gameState = 'gameover';
-    document.getElementById('gameOver').classList.add('show');
+    document.getElementById('flockLost').classList.add('show');
     return;
   }
 
@@ -1221,9 +1221,9 @@ function updateGame(dt) {
     score += inGoal * lvlMultiplier * 10;
     gameState = 'levelcomplete';
     playGoal();
-    const ws = document.getElementById('winScreen');
-    document.getElementById('winTitle').textContent = currentLevel < LEVELS.length - 1 ? 'LEVEL CLEAR!' : 'YOU WIN!';
-    document.getElementById('winSub').textContent = `${inGoal} particles delivered · Score: ${score}\n${currentLevel < LEVELS.length - 1 ? 'Tap for next level' : 'Tap to play again'}`;
+    const ws = document.getElementById('levelClear');
+    document.getElementById('clearTitle').textContent = currentLevel < LEVELS.length - 1 ? 'LEVEL CLEAR!' : 'YOU WIN!';
+    document.getElementById('clearSub').textContent = `${inGoal} particles delivered · Score: ${score}\n${currentLevel < LEVELS.length - 1 ? 'Tap for next level' : 'Tap to play again'}`;
     ws.classList.add('show');
   }
 
