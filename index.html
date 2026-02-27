@@ -721,30 +721,64 @@ function startLevel(lvlIndex) {
   activePredators.forEach(p => removePredator(p));
   activePredators = [];
   cometActive = false;
+  cometParticles = [];
   cometMat.opacity = 0;
   trailMat.opacity = 0;
+  trailVisible = false;
   stillTimer = 0;
   score = 0;
 
   const hw = W / 2, hh = H / 2;
   activePredators = LEVELS[lvlIndex].setup(hw, hh) || [];
 
-  createFlock();
-  // Scatter flock around player start
-  const sp = playerPos;
-  for (let i = 0; i < FLOCK_COUNT; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const r = 50 + Math.random() * 120;
-    flockParticles[i].x = sp.x + Math.cos(angle) * r;
-    flockParticles[i].y = sp.y + Math.sin(angle) * r;
-    flockParticles[i].vx = (Math.random()-0.5)*10;
-    flockParticles[i].vy = (Math.random()-0.5)*10;
-    flockParticles[i].alive = true;
-    flockPositions[i*3] = flockParticles[i].x;
-    flockPositions[i*3+1] = flockParticles[i].y;
-    flockPositions[i*3+2] = 0;
+  if (flockParticles.length === 0) {
+    // First run: create flock scattered around player start
+    createFlock();
+    const sp = playerPos;
+    for (let i = 0; i < FLOCK_COUNT; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const r = 50 + Math.random() * 120;
+      flockParticles[i].x = sp.x + Math.cos(angle) * r;
+      flockParticles[i].y = sp.y + Math.sin(angle) * r;
+      flockParticles[i].vx = (Math.random()-0.5)*10;
+      flockParticles[i].vy = (Math.random()-0.5)*10;
+      flockPositions[i*3]   = flockParticles[i].x;
+      flockPositions[i*3+1] = flockParticles[i].y;
+      flockPositions[i*3+2] = 0;
+    }
+    flockGeometry.attributes.position.needsUpdate = true;
+  } else {
+    // Level transition: keep boid positions — flock flows naturally to new goal.
+    // Just revive any dead particles near the current flock centroid.
+    let cx = 0, cy = 0, n = 0;
+    for (let i = 0; i < FLOCK_COUNT; i++) {
+      if (flockParticles[i].alive) { cx += flockParticles[i].x; cy += flockParticles[i].y; n++; }
+    }
+    if (n > 0) { cx /= n; cy /= n; } else { cx = playerPos.x; cy = playerPos.y; }
+    for (let i = 0; i < FLOCK_COUNT; i++) {
+      const p = flockParticles[i];
+      if (!p.alive) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = 30 + Math.random() * 80;
+        p.x = cx + Math.cos(angle) * r;
+        p.y = cy + Math.sin(angle) * r;
+        p.vx = (Math.random()-0.5) * 8;
+        p.vy = (Math.random()-0.5) * 8;
+        p.alive = true;
+        flockPositions[i*3]   = p.x;
+        flockPositions[i*3+1] = p.y;
+        flockPositions[i*3+2] = 0;
+        flockColors[i*3]   = 0.94;
+        flockColors[i*3+1] = 0.78;
+        flockColors[i*3+2] = 0.26;
+      } else {
+        // Ensure Z is correct (not sunk)
+        flockPositions[i*3+2] = 0;
+      }
+    }
+    flockGeometry.attributes.position.needsUpdate = true;
+    flockGeometry.attributes.color.needsUpdate = true;
   }
-  flockGeometry.attributes.position.needsUpdate = true;
 
   playerPos = { ...sp };
   playerMesh.position.set(playerPos.x, playerPos.y, 2);
