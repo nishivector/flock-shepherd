@@ -1126,9 +1126,18 @@ function updateGame(dt) {
     }
 
     // ── Player influence (gentle nudge, not magnetic pull) ──
-    // Boids inside the goal zone are "settled" — no player pull, let boids rules spread them
-    const inGoalZone = dist(p.x, p.y, goalPos.x, goalPos.y) < GOAL_RADIUS;
-    if (!inGoalZone) {
+    const dGoal = dist(p.x, p.y, goalPos.x, goalPos.y);
+    const inGoalZone = dGoal < GOAL_RADIUS;
+
+    if (inGoalZone) {
+      // Settled in goal: gentle pull toward goal centre keeps them inside,
+      // but weaker than SEP_FORCE so they stay spread out (no compression)
+      const gx = goalPos.x - p.x, gy = goalPos.y - p.y;
+      const gd = Math.sqrt(gx*gx + gy*gy) || 0.001;
+      const settle = 4 * dtS * (dGoal / GOAL_RADIUS); // stronger near edge
+      ax += (gx/gd) * settle;
+      ay += (gy/gd) * settle;
+    } else {
       const ddx = playerPos.x - p.x;
       const ddy = playerPos.y - p.y;
       const dd = Math.sqrt(ddx*ddx + ddy*ddy) || 0.001;
