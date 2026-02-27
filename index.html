@@ -203,6 +203,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 
 // ─── GLOBALS ─────────────────────────────────────────────────────────────────
 let gameState = 'start'; // start | playing | gameover | win
+let levelStartAt = 0;
 let currentLevel = 0;
 let score = 0;
 let audioReady = false;
@@ -226,6 +227,7 @@ const camHalfW = () => W / 2;
 const camHalfH = () => H / 2;
 let camera = new THREE.OrthographicCamera(-W/2, W/2, H/2, -H/2, 0.1, 1000);
 camera.position.z = 100;
+camera.layers.enableAll(); // must enable layer 1 to see flock/player/comet
 
 renderer.setSize(W, H);
 
@@ -760,6 +762,7 @@ function startLevel(lvlIndex) {
   document.getElementById('gameOver').classList.remove('show');
   document.getElementById('winScreen').classList.remove('show');
   updateHUD();
+  levelStartAt = performance.now();
 }
 
 function updateHUD() {
@@ -1196,7 +1199,9 @@ function updateGame(dt) {
 
   // ── Win/lose check ──
   const totalAlive = flockParticles.filter(p => p.alive).length;
-  if (totalAlive < 30 && gameState === 'playing') {
+  updateHUD();
+  // Guard: don't check lose until at least 2s into level (prevents instant-lose on start)
+  if (totalAlive < 30 && gameState === 'playing' && (performance.now() - levelStartAt) > 2000) {
     gameState = 'gameover';
     document.getElementById('gameOver').classList.add('show');
     return;
