@@ -1126,32 +1126,36 @@ function updateGame(dt) {
     }
 
     // ── Player influence (gentle nudge, not magnetic pull) ──
-    const ddx = playerPos.x - p.x;
-    const ddy = playerPos.y - p.y;
-    const dd = Math.sqrt(ddx*ddx + ddy*ddy) || 0.001;
+    // Boids inside the goal zone are "settled" — no player pull, let boids rules spread them
+    const inGoalZone = dist(p.x, p.y, goalPos.x, goalPos.y) < GOAL_RADIUS;
+    if (!inGoalZone) {
+      const ddx = playerPos.x - p.x;
+      const ddy = playerPos.y - p.y;
+      const dd = Math.sqrt(ddx*ddx + ddy*ddy) || 0.001;
 
-    if (playerSpeed < 8) {
-      // Still: gentle attract within radius
-      if (dd < ATTRACT_RADIUS) {
-        const force = ATTRACT_SPEED * dtS * (1 - dd/ATTRACT_RADIUS);
-        ax += (ddx/dd) * force;
-        ay += (ddy/dd) * force;
-      }
-    } else if (playerSpeed < 45) {
-      // Moving: boids orbit the node
-      if (dd < ATTRACT_RADIUS * 1.5) {
-        const perpX = -ddy/dd, perpY = ddx/dd;
-        ax += perpX * ORBIT_SPEED * dtS;
-        ay += perpY * ORBIT_SPEED * dtS;
-        const radialForce = (dd - ORBIT_RADIUS) * 0.015;
-        ax += (ddx/dd) * radialForce;
-        ay += (ddy/dd) * radialForce;
-      }
-    } else {
-      // Fast: boids scatter (predator-like)
-      if (dd < ATTRACT_RADIUS * 2) {
-        ax -= (ddx/dd) * SCATTER_SPEED * dtS;
-        ay -= (ddy/dd) * SCATTER_SPEED * dtS;
+      if (playerSpeed < 8) {
+        // Still: gentle attract within radius
+        if (dd < ATTRACT_RADIUS) {
+          const force = ATTRACT_SPEED * dtS * (1 - dd/ATTRACT_RADIUS);
+          ax += (ddx/dd) * force;
+          ay += (ddy/dd) * force;
+        }
+      } else if (playerSpeed < 45) {
+        // Moving: boids orbit the node
+        if (dd < ATTRACT_RADIUS * 1.5) {
+          const perpX = -ddy/dd, perpY = ddx/dd;
+          ax += perpX * ORBIT_SPEED * dtS;
+          ay += perpY * ORBIT_SPEED * dtS;
+          const radialForce = (dd - ORBIT_RADIUS) * 0.015;
+          ax += (ddx/dd) * radialForce;
+          ay += (ddy/dd) * radialForce;
+        }
+      } else {
+        // Fast: boids scatter (predator-like)
+        if (dd < ATTRACT_RADIUS * 2) {
+          ax -= (ddx/dd) * SCATTER_SPEED * dtS;
+          ay -= (ddy/dd) * SCATTER_SPEED * dtS;
+        }
       }
     }
 
