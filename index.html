@@ -1022,6 +1022,15 @@ function updateGame(dt) {
   }
 
   // ── Flock physics ──
+  // ── Flock centroid (used by predator AI) ──
+  let flockCx = 0, flockCy = 0, aliveCount = 0;
+  for (let i = 0; i < FLOCK_COUNT; i++) {
+    const p = flockParticles[i];
+    if (!p.alive) continue;
+    flockCx += p.x; flockCy += p.y; aliveCount++;
+  }
+  if (aliveCount > 0) { flockCx /= aliveCount; flockCy /= aliveCount; }
+
   // ── Flock physics: Reynolds boids + gentle player influence ──
   // Boid rule radii & strengths
   const SEP_RADIUS = 28,  SEP_FORCE = 90;   // push apart when too close
