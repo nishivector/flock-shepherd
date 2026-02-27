@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Flock Shepherd</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#4A7FA5; overflow:hidden; font-family:'Georgia',serif; }
+canvas#glCanvas {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  touch-action:none; display:block;
+}
+canvas#uiCanvas {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  touch-action:none; pointer-events:none; z-index:2;
+}
+.hidden { display:none !important; }
+#startScreen {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  z-index:10; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  background:rgba(30,60,90,0.55);
+  cursor:pointer;
+}
+#instructionsScreen {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  z-index:10; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  background:rgba(20,45,70,0.75);
+  cursor:pointer;
+  transition:opacity 0.3s ease;
+}
+.title-svg { width:min(420px,85vw); margin-bottom:18px; }
+.tap-hint {
+  color:#F0C842; font-size:clamp(14px,3.5vw,20px);
+  letter-spacing:0.18em; text-transform:uppercase;
+  animation:blink 1.2s ease-in-out infinite;
+  text-shadow:0 0 18px #F0C84299;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+.instr-box {
+  display:flex; flex-direction:column; align-items:center; gap:22px;
+  padding:40px 36px; max-width:480px;
+}
+.instr-title {
+  color:#F0C842; font-size:clamp(20px,5vw,28px);
+  letter-spacing:0.25em; text-transform:uppercase;
+  text-shadow:0 0 20px #F0C84288;
+}
+.instr-rule {
+  color:#D0E8FF; font-size:clamp(13px,3vw,16px);
+  letter-spacing:0.1em; text-align:center; line-height:1.6;
+  text-transform:uppercase;
+}
+.instr-icon { font-size:28px; opacity:0.7; }
+.tap-hint2 {
+  color:#F0C842; font-size:clamp(12px,3vw,16px);
+  letter-spacing:0.2em; margin-top:10px;
+  text-transform:uppercase;
+  animation:blink 1.2s ease-in-out infinite;
+}
+#hud {
+  position:fixed; top:0; left:0; width:100%; z-index:5;
+  pointer-events:none; padding:14px 18px;
+  display:flex; justify-content:space-between; align-items:center;
+}
+#hudLeft { color:#D0E8FF; font-size:14px; letter-spacing:0.1em; text-shadow:0 0 8px #D0E8FF88; }
+#hudRight { color:#F0C842; font-size:14px; letter-spacing:0.1em; text-shadow:0 0 8px #F0C84288; }
+#levelBanner {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  z-index:6; pointer-events:none; text-align:center;
+  opacity:0; transition:opacity 0.4s ease;
+}
+#levelBanner.show { opacity:1; }
+#levelTitle { color:#F0C842; font-size:clamp(22px,5vw,32px); letter-spacing:0.2em; text-shadow:0 0 24px #F0C842; }
+#levelSub { color:#D0E8FF; font-size:clamp(13px,3vw,16px); letter-spacing:0.12em; margin-top:6px; opacity:0.8; }
+#gameOver {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  z-index:8; text-align:center; pointer-events:none;
+  opacity:0; transition:opacity 0.5s ease;
+}
+#gameOver.show { opacity:1; pointer-events:all; cursor:pointer; }
+#gameOverTitle { color:#E05535; font-size:clamp(28px,6vw,40px); letter-spacing:0.2em; text-shadow:0 0 28px #E05535; }
+#gameOverSub { color:#D0E8FF; font-size:clamp(13px,3vw,16px); letter-spacing:0.12em; margin-top:10px; opacity:0.8; }
+#winScreen {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  z-index:8; text-align:center; pointer-events:none;
+  opacity:0; transition:opacity 0.5s ease;
+}
+#winScreen.show { opacity:1; pointer-events:all; cursor:pointer; }
+#winTitle { color:#F0C842; font-size:clamp(28px,6vw,40px); letter-spacing:0.2em; text-shadow:0 0 28px #F0C842; }
+#winSub { color:#D0E8FF; font-size:clamp(13px,3vw,16px); letter-spacing:0.12em; margin-top:10px; opacity:0.8; }
+#chargeArc {
+  position:fixed; pointer-events:none; z-index:3;
+  top:0; left:0; width:100%; height:100%;
+}
+.vignette {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  pointer-events:none; z-index:1;
+  background:radial-gradient(ellipse at center, transparent 60%, rgba(15,35,55,0.20) 100%);
+}
+</style>
+
+<!-- Tone.js MUST be before importmap -->
+<script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/dist/Tone.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<!-- Start Screen -->
+<div id="startScreen">
+  <svg class="title-svg" viewBox="0 0 420 120" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="glow">
+        <feGaussianBlur stdDeviation="6" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <!-- Icon: central circle + orbiting dots -->
+    <g transform="translate(48,60)" filter="url(#glow)">
+      <circle cx="0" cy="0" r="10" fill="none" stroke="#D0E8FF" stroke-width="1.5"/>
+      <circle cx="22" cy="0" r="4" fill="#F0C842" opacity="0.9"/>
+      <circle cx="-22" cy="0" r="3" fill="#F0C842" opacity="0.7"/>
+      <circle cx="11" cy="-19" r="4" fill="#F0C842" opacity="0.85"/>
+      <circle cx="-11" cy="-19" r="3" fill="#F0C842" opacity="0.65"/>
+      <circle cx="11" cy="19" r="3.5" fill="#F0C842" opacity="0.8"/>
+      <circle cx="-11" cy="19" r="3" fill="#F0C842" opacity="0.6"/>
+      <circle cx="0" cy="-23" r="2.5" fill="#F0C842" opacity="0.55"/>
+    </g>
+    <!-- Title text -->
+    <text x="92" y="46" fill="#F0C842" font-size="26" font-family="Georgia,serif"
+          letter-spacing="6" filter="url(#glow)" font-weight="normal">FLOCK</text>
+    <text x="92" y="80" fill="#F0C842" font-size="26" font-family="Georgia,serif"
+          letter-spacing="6" filter="url(#glow)" font-weight="normal">SHEPHERD</text>
+    <text x="92" y="105" fill="#D0E8FF" font-size="11" font-family="Georgia,serif"
+          letter-spacing="4" opacity="0.7">Stillness is the only weapon that matters.</text>
+  </svg>
+  <div class="tap-hint">Tap to Begin</div>
+</div>
+
+<!-- Instructions Screen -->
+<div id="instructionsScreen" class="hidden">
+  <div class="instr-box">
+    <div class="instr-title">How to Shepherd</div>
+    <div class="instr-rule">
+      <span class="instr-icon">✦</span><br>
+      MOVE to guide your flock<br>
+      <em style="color:#F0C84299;font-size:0.85em">Particles orbit your node when you drift slowly</em>
+    </div>
+    <div class="instr-rule">
+      <span class="instr-icon">◉</span><br>
+      HOLD STILL 4 seconds to charge the comet<br>
+      <em style="color:#F0C84299;font-size:0.85em">The flock compresses — then fires as one spear</em>
+    </div>
+    <div class="instr-rule">
+      <span class="instr-icon">◎</span><br>
+      GUIDE 30+ particles to the gold goal ring<br>
+      <em style="color:#F0C84299;font-size:0.85em">Avoid the ember-red predator clouds</em>
+    </div>
+    <div class="tap-hint2">Tap anywhere to play</div>
+  </div>
+</div>
+
+<!-- Game UI -->
+<div id="hud" class="hidden">
+  <div id="hudLeft">FLOCK: <span id="flockCount">80</span></div>
+  <div id="hudRight">SCORE: <span id="scoreCount">0</span></div>
+</div>
+<div id="levelBanner">
+  <div id="levelTitle">LEVEL 1</div>
+  <div id="levelSub">Open Sky</div>
+</div>
+<div id="gameOver">
+  <div id="gameOverTitle">FLOCK LOST</div>
+  <div id="gameOverSub">Your flock dwindled below 30.<br>Tap to restart.</div>
+</div>
+<div id="winScreen">
+  <div id="winTitle">LEVEL CLEAR</div>
+  <div id="winSub" id="winSubText"></div>
+</div>
+
+<!-- Vignette -->
+<div class="vignette"></div>
+
+<!-- Three.js canvas -->
+<canvas id="glCanvas"></canvas>
+<!-- UI overlay canvas (charge arc, flock HUD overlay) -->
+<canvas id="uiCanvas"></canvas>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ─── GLOBALS ─────────────────────────────────────────────────────────────────
+let gameState = 'start'; // start | playing | gameover | win
+let currentLevel = 0;
+let score = 0;
+let audioReady = false;
+
+// ─── POINTER TRACKING ────────────────────────────────────────────────────────
+let pointer = { x: 0, y: 0 }; // screen pixels
+let pointerActive = false;
+
+// ─── THREE.JS SETUP ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('glCanvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x4A7FA5, 1);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x4A7FA5);
+
+// Orthographic camera
+let W = window.innerWidth, H = window.innerHeight;
+const camHalfW = () => W / 2;
+const camHalfH = () => H / 2;
+let camera = new THREE.OrthographicCamera(-W/2, W/2, H/2, -H/2, 0.1, 1000);
+camera.position.z = 100;
+
+renderer.setSize(W, H);
+
+// Post-processing
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(W, H), 0.9, 0.4, 0.55
+);
+composer.addPass(bloomPass);
+
+// ─── UI CANVAS ───────────────────────────────────────────────────────────────
+const uiCanvas = document.getElementById('uiCanvas');
+const uiCtx = uiCanvas.getContext('2d');
+uiCanvas.width = W;
+uiCanvas.height = H;
+
+// ─── RESIZE ──────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  W = window.innerWidth; H = window.innerHeight;
+  renderer.setSize(W, H);
+  composer.setSize(W, H);
+  camera.left = -W/2; camera.right = W/2;
+  camera.top = H/2; camera.bottom = -H/2;
+  camera.updateProjectionMatrix();
+  uiCanvas.width = W; uiCanvas.height = H;
+});
+
+// ─── SCREEN ↔ WORLD COORDS ───────────────────────────────────────────────────
+function screenToWorld(sx, sy) {
+  const rect = canvas.getBoundingClientRect();
+  const nx = ((sx - rect.left) / rect.width) * 2 - 1;
+  const ny = -((sy - rect.top) / rect.height) * 2 + 1;
+  return {
+    x: nx * (W / 2),
+    y: ny * (H / 2)
+  };
+}
+
+function worldToScreen(wx, wy) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((wx / (W / 2) + 1) / 2) * rect.width + rect.left,
+    y: ((-wy / (H / 2) + 1) / 2) * rect.height + rect.top
+  };
+}
+
+// ─── AUDIO ───────────────────────────────────────────────────────────────────
+let bassOsc, bassGain, shimmers = [], shimmerGain;
+let chargeSynth, cometReleaseSynth, deathSynth, goalSynth, hitSynth;
+let bassEnv = { bpm: 72, targetBPM: 72 };
+let chargeGain, chargeOsc;
+
+async function initAudio() {
+  if (audioReady) return;
+  try {
+    await Tone.start();
+    // Sub-bass heartbeat
+    bassOsc = new Tone.Oscillator({ frequency: 55, type: 'sine' }).toDestination();
+    bassGain = new Tone.Gain(0).toDestination();
+    bassOsc.connect(bassGain);
+    bassGain.gain.rampTo(0.18, 2);
+    bassOsc.start();
+
+    // Shimmer oscillators
+    shimmerGain = new Tone.Gain(0.05).toDestination();
+    const shimmerFreqs = [800, 1100, 1450, 1800, 2200, 2450];
+    for (let i = 0; i < 6; i++) {
+      const osc = new Tone.Oscillator({
+        frequency: shimmerFreqs[i] + (Math.random() * 16 - 8),
+        type: 'sine'
+      });
+      osc.connect(shimmerGain);
+      osc.start();
+      shimmers.push(osc);
+    }
+
+    // Comet charge oscillator
+    chargeGain = new Tone.Gain(0).toDestination();
+    chargeOsc = new Tone.Oscillator({ frequency: 200, type: 'triangle' });
+    chargeOsc.connect(chargeGain);
+    chargeOsc.start();
+
+    // SFX synths
+    deathSynth = new Tone.Synth({
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.05 }
+    }).toDestination();
+    deathSynth.volume.value = -20;
+
+    goalSynth = new Tone.MetalSynth({
+      envelope: { attack: 0.001, decay: 0.4, release: 0.3 },
+      harmonicity: 5.1,
+      modulationIndex: 16,
+      resonance: 4000,
+      octaves: 1.5
+    }).toDestination();
+    goalSynth.volume.value = -14;
+
+    hitSynth = new Tone.MetalSynth({
+      envelope: { attack: 0.001, decay: 0.2, release: 0.1 },
+      harmonicity: 3.5,
+      modulationIndex: 10,
+      resonance: 6000,
+      octaves: 0.8
+    }).toDestination();
+    hitSynth.volume.value = -16;
+
+    cometReleaseSynth = new Tone.NoiseSynth({
+      noise: { type: 'pink' },
+      envelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.2 }
+    }).toDestination();
+    cometReleaseSynth.volume.value = -18;
+
+    audioReady = true;
+  } catch(e) {
+    // audio failed silently
+  }
+}
+
+function playDeath() {
+  if (!audioReady || !deathSynth) return;
+  try {
+    deathSynth.triggerAttackRelease(400, '64n');
+    setTimeout(() => { try { deathSynth.frequency && (deathSynth.frequency.value = 200); } catch(e){} }, 40);
+  } catch(e) {}
+}
+
+function playCometRelease() {
+  if (!audioReady || !cometReleaseSynth) return;
+  try { cometReleaseSynth.triggerAttackRelease('8n'); } catch(e) {}
+}
+
+function playGoal() {
+  if (!audioReady || !goalSynth) return;
+  const freqs = [293.66, 369.99, 440]; // D4, F#4, A4
+  freqs.forEach((f, i) => {
+    try { setTimeout(() => goalSynth.triggerAttackRelease(f, '8n'), i * 120); } catch(e) {}
+  });
+}
+
+function playCometHit() {
+  if (!audioReady || !hitSynth) return;
+  try { hitSynth.triggerAttackRelease(600, '16n'); } catch(e) {}
+}
+
+function updateAudio(predatorNear, stillTime) {
+  if (!audioReady) return;
+  // Predator proximity → bass BPM doubles
+  const targetBPM = predatorNear ? 144 : 72;
+  bassEnv.targetBPM += (targetBPM - bassEnv.targetBPM) * 0.02;
+  if (bassOsc) {
+    bassOsc.frequency.value = 55 * (bassEnv.targetBPM / 72);
+  }
+  // Comet charge pad
+  const chargeLevel = Math.min(stillTime / 4000, 1);
+  if (chargeGain) {
+    chargeGain.gain.rampTo(chargeLevel * 0.12, 0.1);
+    if (chargeOsc) {
+      chargeOsc.frequency.value = 200 + chargeLevel * 600;
+    }
+  }
+}
+
+// ─── GAME OBJECTS ────────────────────────────────────────────────────────────
+// Bloom-able layer: layer 1
+// Non-bloom layer: layer 0 (predators)
+
+// Player node
+const playerGeo = new THREE.RingGeometry(6, 7.5, 48);
+const playerMat = new THREE.MeshBasicMaterial({ color: 0xD0E8FF, transparent: true, opacity: 0.85 });
+const playerMesh = new THREE.Mesh(playerGeo, playerMat);
+playerMesh.layers.set(1);
+scene.add(playerMesh);
+
+// Player world position
+let playerPos = { x: 0, y: 0 };
+let playerVel = { x: 0, y: 0 };
+let prevPlayerPos = { x: 0, y: 0 };
+let playerSpeed = 0;
+let stillTimer = 0;
+let lastMoveDir = { x: 1, y: 0 };
+
+// ─── FLOCK ───────────────────────────────────────────────────────────────────
+const FLOCK_COUNT = 80;
+const PARTICLE_SIZE = 3;
+let flockParticles = [];
+let flockGeometry, flockMaterial, flockPoints;
+let flockPositions, flockColors;
+
+function createFlock() {
+  if (flockPoints) scene.remove(flockPoints);
+  flockPositions = new Float32Array(FLOCK_COUNT * 3);
+  flockColors = new Float32Array(FLOCK_COUNT * 3);
+  flockParticles = [];
+
+  for (let i = 0; i < FLOCK_COUNT; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = 80 + Math.random() * 120;
+    const px = Math.cos(angle) * r;
+    const py = Math.sin(angle) * r;
+    flockParticles.push({
+      x: px, y: py,
+      vx: (Math.random() - 0.5) * 10,
+      vy: (Math.random() - 0.5) * 10,
+      alive: true,
+      i
+    });
+    flockPositions[i*3] = px;
+    flockPositions[i*3+1] = py;
+    flockPositions[i*3+2] = 0;
+    flockColors[i*3] = 0.94;
+    flockColors[i*3+1] = 0.78;
+    flockColors[i*3+2] = 0.26;
+  }
+
+  flockGeometry = new THREE.BufferGeometry();
+  flockGeometry.setAttribute('position', new THREE.BufferAttribute(flockPositions, 3));
+  flockGeometry.setAttribute('color', new THREE.BufferAttribute(flockColors, 3));
+  flockMaterial = new THREE.PointsMaterial({
+    size: PARTICLE_SIZE * 2,
+    vertexColors: true,
+    transparent: true,
+    opacity: 1.0,
+    sizeAttenuation: false
+  });
+  flockPoints = new THREE.Points(flockGeometry, flockMaterial);
+  flockPoints.layers.set(1);
+  scene.add(flockPoints);
+}
+
+// ─── COMET ───────────────────────────────────────────────────────────────────
+let cometActive = false;
+let cometPos = { x: 0, y: 0 };
+let cometDir = { x: 1, y: 0 };
+let cometTimer = 0;
+const COMET_DURATION = 1600;
+const COMET_SPEED = 420;
+let cometParticles = []; // indices of flock particles in comet
+
+// Comet mesh (cluster visual)
+const cometGeo = new THREE.CircleGeometry(10, 16);
+const cometMat = new THREE.MeshBasicMaterial({ color: 0xF0C842, transparent: true, opacity: 0 });
+const cometMesh = new THREE.Mesh(cometGeo, cometMat);
+cometMesh.layers.set(1);
+scene.add(cometMesh);
+
+// Comet trail (line of previous positions)
+const TRAIL_LEN = 20;
+let trailPositions = new Float32Array(TRAIL_LEN * 3);
+let trailGeo = new THREE.BufferGeometry();
+trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+let trailMat = new THREE.LineBasicMaterial({
+  color: 0xF0E080,
+  transparent: true,
+  opacity: 0.5,
+  linewidth: 2
+});
+let trailLine = new THREE.Line(trailGeo, trailMat);
+trailLine.layers.set(1);
+scene.add(trailLine);
+let trailHead = 0;
+let trailVisible = false;
+
+// ─── PREDATORS ───────────────────────────────────────────────────────────────
+let predators = []; // { discs: [{mesh, ox, oy}], x, y, fleeTimer }
+const PREDATOR_DISC_SIZES = [3, 4, 5];
+
+function createPredatorCloud(x, y, discCount) {
+  const discs = [];
+  for (let i = 0; i < discCount; i++) {
+    const r = 3 + Math.random() * 2;
+    const geo = new THREE.CircleGeometry(r, 8);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xE05535,
+      transparent: true,
+      opacity: 0.85
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.layers.set(0); // no bloom
+    const angle = (i / discCount) * Math.PI * 2;
+    const pr = 6 + Math.random() * 14;
+    const ox = Math.cos(angle) * pr;
+    const oy = Math.sin(angle) * pr;
+    mesh.position.set(x + ox, y + oy, 1);
+    scene.add(mesh);
+    discs.push({ mesh, ox, oy, pr, angle: angle });
+  }
+  return { discs, x, y, vx: 0, vy: 0, fleeTimer: 0, rotAngle: 0 };
+}
+
+function removePredator(pred) {
+  pred.discs.forEach(d => scene.remove(d.mesh));
+}
+
+// ─── BARRIERS ────────────────────────────────────────────────────────────────
+let barriers = []; // { mesh, x, y, w, h }
+
+function createBarrier(x, y, w, h) {
+  const geo = new THREE.PlaneGeometry(w, h);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x2A5A78,
+    transparent: true,
+    opacity: 0.30
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.layers.set(0);
+  mesh.position.set(x, y, 0.5);
+  scene.add(mesh);
+
+  // Outline
+  const edges = new THREE.EdgesGeometry(geo);
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x1A3A50, transparent: true, opacity: 0.9 });
+  const outline = new THREE.LineSegments(edges, lineMat);
+  outline.layers.set(0);
+  mesh.add(outline);
+
+  barriers.push({ mesh, x, y, w, h });
+  return { mesh, x, y, w, h };
+}
+
+function clearBarriers() {
+  barriers.forEach(b => scene.remove(b.mesh));
+  barriers = [];
+}
+
+// ─── GOAL ZONE ───────────────────────────────────────────────────────────────
+let goalPos = { x: 0, y: 0 };
+const GOAL_RADIUS = 50;
+const goalGeo = new THREE.RingGeometry(GOAL_RADIUS - 2, GOAL_RADIUS + 2, 48);
+const goalMat = new THREE.MeshBasicMaterial({
+  color: 0xF0C842,
+  transparent: true,
+  opacity: 0.5
+});
+const goalMesh = new THREE.Mesh(goalGeo, goalMat);
+goalMesh.layers.set(1);
+scene.add(goalMesh);
+
+// Goal fill (subtle)
+const goalFillGeo = new THREE.CircleGeometry(GOAL_RADIUS, 48);
+const goalFillMat = new THREE.MeshBasicMaterial({
+  color: 0xF0C842,
+  transparent: true,
+  opacity: 0.05
+});
+const goalFillMesh = new THREE.Mesh(goalFillGeo, goalFillMat);
+goalFillMesh.layers.set(0);
+scene.add(goalFillMesh);
+
+function setGoal(x, y) {
+  goalPos = { x, y };
+  goalMesh.position.set(x, y, 0.5);
+  goalFillMesh.position.set(x, y, 0.5);
+}
+
+// ─── LEVEL DEFINITIONS ───────────────────────────────────────────────────────
+const LEVELS = [
+  {
+    name: 'Level 1', sub: 'Open Sky',
+    setup(hw, hh) {
+      setGoal(hw * 0.35, 0);
+      playerPos = { x: -hw * 0.35, y: 0 };
+      return [];
+    }
+  },
+  {
+    name: 'Level 2', sub: 'The Circling',
+    setup(hw, hh) {
+      setGoal(hw * 0.3, hh * 0.2);
+      playerPos = { x: -hw * 0.3, y: -hh * 0.2 };
+      const p = createPredatorCloud(hw * 0.5, 0, 15);
+      p._orbit = { cx: 0, cy: 0, r: Math.min(hw, hh) * 0.45, angle: 0, speed: 0.4, inwardRate: 0.15 };
+      p._speed = 18;
+      return [p];
+    }
+  },
+  {
+    name: 'Level 3', sub: 'The Narrows',
+    setup(hw, hh) {
+      setGoal(hw * 0.36, 0);
+      playerPos = { x: -hw * 0.36, y: 0 };
+      // Two barriers with 80px gap
+      const bx1 = hw * 0.08;
+      createBarrier(bx1, hh * 0.22, 60, hh * 0.42);
+      createBarrier(bx1, -hh * 0.22, 60, hh * 0.42);
+      const p = createPredatorCloud(-hw * 0.1, hh * 0.1, 18);
+      p._speed = 20;
+      return [p];
+    }
+  },
+  {
+    name: 'Level 4', sub: 'Double Spiral',
+    setup(hw, hh) {
+      setGoal(hw * 0.32, 0);
+      playerPos = { x: -hw * 0.32, y: 0 };
+      const p1 = createPredatorCloud(hw * 0.1, hh * 0.25, 15);
+      const p2 = createPredatorCloud(hw * 0.1, -hh * 0.25, 15);
+      p1._speed = 22; p2._speed = 22;
+      p1._orbitPartner = p2;
+      p2._orbitPartner = p1;
+      const bx = 0;
+      createBarrier(bx, 0, 60, hh * 0.25);
+      return [p1, p2];
+    }
+  },
+  {
+    name: 'Level 5', sub: 'The Gauntlet',
+    setup(hw, hh) {
+      setGoal(hw * 0.38, 0);
+      playerPos = { x: -hw * 0.38, y: 0 };
+      // 3 barriers forming 90px corridor
+      const corridor = 45; // half-gap
+      createBarrier(-hw * 0.1, hh * 0.25 + corridor, 60, hh * 0.45);
+      createBarrier(-hw * 0.1, -(hh * 0.25 + corridor), 60, hh * 0.45);
+      createBarrier(hw * 0.15, hh * 0.25 + corridor, 60, hh * 0.45);
+      createBarrier(hw * 0.15, -(hh * 0.25 + corridor), 60, hh * 0.45);
+      const p1 = createPredatorCloud(-hw * 0.2, 0, 20);
+      const p2 = createPredatorCloud(hw * 0.05, 0, 20);
+      p1._speed = 25; p2._speed = 25;
+      return [p1, p2];
+    }
+  }
+];
+
+// ─── START SCREEN IDLE ANIMATION ─────────────────────────────────────────────
+// For the start screen, animate 80 gold particles orbiting center
+let idleParticles = [];
+let idleFlockGeo, idleFlockPoints, idleFlockPositions;
+let idlePredator = null;
+let idlePredRotAngle = 0;
+let idleCometTimer = 0; // cycles 0-12000ms
+const IDLE_COMET_INTERVAL = 8000;
+let idleCometActive = false;
+let idleCometPos = { x: 0, y: 0 };
+let idleCometTimer2 = 0;
+let idleNodePulse = 0;
+let idleNodePos = { x: 0, y: 0 };
+
+function setupIdleAnimation() {
+  // 80 gold particles in lazy orbits
+  idleFlockPositions = new Float32Array(80 * 3);
+  idleParticles = [];
+  for (let i = 0; i < 80; i++) {
+    const angle = (i / 80) * Math.PI * 2 + Math.random() * 0.5;
+    const r = 40 + Math.random() * 100;
+    idleParticles.push({
+      angle,
+      r,
+      speed: 0.003 + Math.random() * 0.004,
+      phase: Math.random() * Math.PI * 2
+    });
+    idleFlockPositions[i*3] = Math.cos(angle) * r;
+    idleFlockPositions[i*3+1] = Math.sin(angle) * r;
+    idleFlockPositions[i*3+2] = 0;
+  }
+  idleFlockGeo = new THREE.BufferGeometry();
+  idleFlockGeo.setAttribute('position', new THREE.BufferAttribute(idleFlockPositions, 3));
+
+  const cols = new Float32Array(80 * 3);
+  for (let i = 0; i < 80; i++) {
+    cols[i*3]=0.94; cols[i*3+1]=0.78; cols[i*3+2]=0.26;
+  }
+  idleFlockGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+
+  const mat = new THREE.PointsMaterial({
+    size: 5, vertexColors: true, transparent: true,
+    opacity: 0.9, sizeAttenuation: false
+  });
+  idleFlockPoints = new THREE.Points(idleFlockGeo, mat);
+  idleFlockPoints.layers.set(1);
+  scene.add(idleFlockPoints);
+
+  // One predator cloud at screen edge
+  const edgeX = (W/2) * 0.8;
+  const edgeY = (H/2) * 0.7;
+  idlePredator = createPredatorCloud(edgeX, edgeY, 16);
+}
+
+function teardownIdleAnimation() {
+  if (idleFlockPoints) { scene.remove(idleFlockPoints); idleFlockPoints = null; }
+  if (idlePredator) { removePredator(idlePredator); idlePredator = null; }
+}
+
+// ─── LEVEL MANAGEMENT ────────────────────────────────────────────────────────
+let activePredators = [];
+
+function startLevel(lvlIndex) {
+  currentLevel = lvlIndex;
+  clearBarriers();
+  activePredators.forEach(p => removePredator(p));
+  activePredators = [];
+  cometActive = false;
+  cometMat.opacity = 0;
+  trailMat.opacity = 0;
+  stillTimer = 0;
+  score = 0;
+
+  const hw = W / 2, hh = H / 2;
+  activePredators = LEVELS[lvlIndex].setup(hw, hh) || [];
+
+  createFlock();
+  // Scatter flock around player start
+  const sp = playerPos;
+  for (let i = 0; i < FLOCK_COUNT; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = 50 + Math.random() * 120;
+    flockParticles[i].x = sp.x + Math.cos(angle) * r;
+    flockParticles[i].y = sp.y + Math.sin(angle) * r;
+    flockParticles[i].vx = (Math.random()-0.5)*10;
+    flockParticles[i].vy = (Math.random()-0.5)*10;
+    flockParticles[i].alive = true;
+    flockPositions[i*3] = flockParticles[i].x;
+    flockPositions[i*3+1] = flockParticles[i].y;
+    flockPositions[i*3+2] = 0;
+  }
+  flockGeometry.attributes.position.needsUpdate = true;
+
+  playerPos = { ...sp };
+  playerMesh.position.set(playerPos.x, playerPos.y, 2);
+  pointerActive = false;
+  prevPlayerPos = { ...playerPos };
+
+  // Show level banner
+  document.getElementById('levelTitle').textContent = LEVELS[lvlIndex].name;
+  document.getElementById('levelSub').textContent = LEVELS[lvlIndex].sub;
+  const banner = document.getElementById('levelBanner');
+  banner.classList.add('show');
+  setTimeout(() => banner.classList.remove('show'), 2000);
+
+  document.getElementById('hud').classList.remove('hidden');
+  document.getElementById('gameOver').classList.remove('show');
+  document.getElementById('winScreen').classList.remove('show');
+  updateHUD();
+}
+
+function updateHUD() {
+  const alive = flockParticles.filter(p => p.alive).length;
+  document.getElementById('flockCount').textContent = alive;
+  document.getElementById('scoreCount').textContent = score;
+}
+
+// ─── POINTER EVENTS ───────────────────────────────────────────────────────────
+canvas.addEventListener('pointermove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  pointer.x = sx;
+  pointer.y = sy;
+  pointerActive = true;
+});
+
+canvas.addEventListener('pointerdown', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = e.clientX - rect.left;
+  pointer.y = e.clientY - rect.top;
+  pointerActive = true;
+});
+
+document.getElementById('gameOver').addEventListener('pointerdown', () => {
+  document.getElementById('gameOver').classList.remove('show');
+  gameState = 'playing';
+  startLevel(currentLevel);
+});
+
+document.getElementById('winScreen').addEventListener('pointerdown', () => {
+  document.getElementById('winScreen').classList.remove('show');
+  const next = currentLevel + 1;
+  if (next < LEVELS.length) {
+    gameState = 'playing';
+    startLevel(next);
+  } else {
+    // All levels done — back to level 1
+    gameState = 'playing';
+    startLevel(0);
+  }
+});
+
+// ─── START / INSTRUCTIONS SCREENS ────────────────────────────────────────────
+document.getElementById('startScreen').addEventListener('pointerdown', () => {
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('instructionsScreen').classList.remove('hidden');
+  initAudio().catch(() => {});
+}, { once: true });
+
+document.getElementById('instructionsScreen').addEventListener('pointerdown', () => {
+  document.getElementById('instructionsScreen').style.opacity = '0';
+  setTimeout(() => {
+    document.getElementById('instructionsScreen').classList.add('hidden');
+    document.getElementById('instructionsScreen').style.opacity = '1';
+    teardownIdleAnimation();
+    gameState = 'playing';
+    startLevel(0);
+  }, 300);
+}, { once: true });
+
+// ─── MAIN LOOP ────────────────────────────────────────────────────────────────
+let lastTime = performance.now();
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function dist(ax, ay, bx, by) { return Math.sqrt((ax-bx)**2+(ay-by)**2); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function updateIdle(dt) {
+  // Animate idle flock
+  for (let i = 0; i < 80; i++) {
+    const p = idleParticles[i];
+    p.angle += p.speed;
+    const wobble = Math.sin(p.phase + Date.now() * 0.001) * 8;
+    idleFlockPositions[i*3] = Math.cos(p.angle) * (p.r + wobble);
+    idleFlockPositions[i*3+1] = Math.sin(p.angle) * (p.r + wobble) * 0.6;
+    idleFlockPositions[i*3+2] = 0;
+  }
+  if (idleFlockGeo) idleFlockGeo.attributes.position.needsUpdate = true;
+
+  // Pulse player node
+  idleNodePulse += dt * 0.001 / 0.6; // 1.2s period
+  playerMat.opacity = 0.7 + Math.sin(idleNodePulse * Math.PI * 2) * 0.15;
+  playerMesh.position.set(0, 0, 2);
+
+  // Predator cloud at edge
+  if (idlePredator) {
+    idlePredRotAngle += dt * 0.035 * (Math.PI / 180) * 35;
+    const edgeX = (W/2) * 0.75;
+    const edgeY = (H/2) * 0.65;
+    idlePredator.discs.forEach((d, i) => {
+      d.angle += dt * 0.001 * 35 * (Math.PI / 180);
+      const nx = edgeX + Math.cos(d.angle) * d.pr;
+      const ny = edgeY + Math.sin(d.angle) * d.pr;
+      d.mesh.position.set(nx, ny, 1);
+    });
+  }
+
+  // Comet demo every ~8s
+  idleCometTimer += dt;
+  if (!idleCometActive && idleCometTimer > IDLE_COMET_INTERVAL) {
+    idleCometActive = true;
+    idleCometTimer = 0;
+    idleCometTimer2 = 0;
+    idleCometPos = { x: 0, y: 0 };
+    cometMat.opacity = 0.9;
+    cometMesh.position.set(0, 0, 2);
+  }
+  if (idleCometActive) {
+    idleCometTimer2 += dt;
+    const progress = idleCometTimer2 / 1000;
+    const cx = progress * 180;
+    idleCometPos.x = cx;
+    cometMesh.position.set(cx, 0, 2);
+    if (idleCometTimer2 > 1000) {
+      idleCometActive = false;
+      cometMat.opacity = 0;
+    }
+  }
+}
+
+function updateGame(dt) {
+  // ── Player movement ──
+  if (pointerActive) {
+    const wp = screenToWorld(pointer.x, pointer.y);
+    const dx = wp.x - playerPos.x;
+    const dy = wp.y - playerPos.y;
+    const lerpFactor = 0.15;
+    playerPos.x += dx * lerpFactor;
+    playerPos.y += dy * lerpFactor;
+  }
+
+  playerVel.x = playerPos.x - prevPlayerPos.x;
+  playerVel.y = playerPos.y - prevPlayerPos.y;
+  playerSpeed = Math.sqrt(playerVel.x**2 + playerVel.y**2) / (dt / 16.67);
+
+  if (playerSpeed > 5) {
+    lastMoveDir.x = playerVel.x;
+    lastMoveDir.y = playerVel.y;
+    const mag = Math.sqrt(lastMoveDir.x**2 + lastMoveDir.y**2);
+    if (mag > 0) { lastMoveDir.x /= mag; lastMoveDir.y /= mag; }
+    stillTimer = 0;
+  } else {
+    stillTimer += dt;
+  }
+
+  prevPlayerPos = { ...playerPos };
+
+  // Player pulse
+  idleNodePulse += dt * 0.001 / 0.6;
+  playerMat.opacity = 0.7 + Math.sin(idleNodePulse * Math.PI * 2) * 0.15;
+  playerMesh.position.set(playerPos.x, playerPos.y, 2);
+
+  // ── Comet charge ──
+  const chargeRatio = Math.min(stillTimer / 4000, 1);
+  if (!cometActive && chargeRatio >= 1.0) {
+    // FIRE comet
+    cometActive = true;
+    cometPos = { x: playerPos.x, y: playerPos.y };
+    cometDir = { x: lastMoveDir.x, y: lastMoveDir.y };
+    cometTimer = 0;
+    stillTimer = 0;
+
+    // Gather flock into comet
+    cometParticles = [];
+    for (let i = 0; i < FLOCK_COUNT; i++) {
+      const p = flockParticles[i];
+      if (!p.alive) continue;
+      const d = dist(p.x, p.y, playerPos.x, playerPos.y);
+      if (d < 300) {
+        cometParticles.push(i);
+        p.vx = 0; p.vy = 0;
+      }
+    }
+    playCometRelease();
+    cometMat.opacity = 1.0;
+    trailMat.opacity = 0.5;
+    trailVisible = true;
+    // Reset trail
+    for (let i = 0; i < TRAIL_LEN * 3; i++) trailPositions[i] = 0;
+    trailGeo.attributes.position.needsUpdate = true;
+  }
+
+  // ── Active comet movement ──
+  if (cometActive) {
+    const speed = COMET_SPEED * (dt / 1000);
+    cometPos.x += cometDir.x * speed;
+    cometPos.y += cometDir.y * speed;
+    cometTimer += dt;
+
+    cometMesh.position.set(cometPos.x, cometPos.y, 2);
+
+    // Move comet particles as cluster behind comet
+    cometParticles.forEach((idx, ci) => {
+      const p = flockParticles[idx];
+      if (!p.alive) return;
+      const angle = (ci / cometParticles.length) * Math.PI * 2;
+      const clusterR = 12;
+      const tx = cometPos.x + Math.cos(angle) * clusterR * Math.random();
+      const ty = cometPos.y + Math.sin(angle) * clusterR * Math.random();
+      p.x = lerp(p.x, tx, 0.5);
+      p.y = lerp(p.y, ty, 0.5);
+      flockPositions[idx*3] = p.x;
+      flockPositions[idx*3+1] = p.y;
+    });
+
+    // Trail update
+    for (let i = TRAIL_LEN - 1; i > 0; i--) {
+      trailPositions[i*3] = trailPositions[(i-1)*3];
+      trailPositions[i*3+1] = trailPositions[(i-1)*3+1];
+      trailPositions[i*3+2] = trailPositions[(i-1)*3+2];
+    }
+    trailPositions[0] = cometPos.x;
+    trailPositions[1] = cometPos.y;
+    trailPositions[2] = 2;
+    trailGeo.attributes.position.needsUpdate = true;
+
+    // Barrier collision
+    for (const b of barriers) {
+      const bLeft = b.x - b.w/2, bRight = b.x + b.w/2;
+      const bTop = b.y + b.h/2, bBot = b.y - b.h/2;
+      if (cometPos.x >= bLeft-18 && cometPos.x <= bRight+18 &&
+          cometPos.y >= bBot-18 && cometPos.y <= bTop+18) {
+        // Comet punches through — keep going (design says comet pierces)
+      }
+    }
+
+    // Predator collision — comet within 80px → flee
+    for (const pred of activePredators) {
+      const d = dist(cometPos.x, cometPos.y, pred.x, pred.y);
+      if (d < 80) {
+        pred.fleeTimer = 2000;
+        playCometHit();
+      }
+    }
+
+    // Comet ends
+    if (cometTimer >= COMET_DURATION) {
+      cometActive = false;
+      cometMat.opacity = 0;
+      trailMat.opacity = 0;
+      trailVisible = false;
+      // Release particles at comet position
+      cometParticles.forEach(idx => {
+        const p = flockParticles[idx];
+        if (!p.alive) return;
+        const angle = Math.random() * Math.PI * 2;
+        const r = Math.random() * 25;
+        p.x = cometPos.x + Math.cos(angle) * r;
+        p.y = cometPos.y + Math.sin(angle) * r;
+        p.vx = (Math.random()-0.5)*30;
+        p.vy = (Math.random()-0.5)*30;
+      });
+      cometParticles = [];
+    }
+  }
+
+  // ── Flock physics ──
+  let flockCx = 0, flockCy = 0, aliveCount = 0;
+  for (let i = 0; i < FLOCK_COUNT; i++) {
+    const p = flockParticles[i];
+    if (!p.alive) continue;
+    flockCx += p.x; flockCy += p.y;
+    aliveCount++;
+  }
+  if (aliveCount > 0) { flockCx /= aliveCount; flockCy /= aliveCount; }
+
+  const ATTRACT_RADIUS = 220, ATTRACT_SPEED = 35;
+  const ORBIT_RADIUS = 90, ORBIT_SPEED = 28;
+  const SCATTER_SPEED = 55;
+  const INERTIA = Math.pow(0.5, (dt/1000) / 2.0); // half-life 2000ms
+
+  for (let i = 0; i < FLOCK_COUNT; i++) {
+    const p = flockParticles[i];
+    if (!p.alive) continue;
+    if (cometActive && cometParticles.includes(i)) continue;
+
+    const ddx = playerPos.x - p.x;
+    const ddy = playerPos.y - p.y;
+    const dd = Math.sqrt(ddx*ddx + ddy*ddy) || 0.001;
+
+    let ax = 0, ay = 0;
+    const speed_px_per_frame = playerSpeed; // px per frame approx
+
+    if (speed_px_per_frame < 8) {
+      // Attract
+      if (dd < ATTRACT_RADIUS) {
+        const force = ATTRACT_SPEED * (dt/1000) * (1 - dd/ATTRACT_RADIUS);
+        ax += (ddx/dd) * force;
+        ay += (ddy/dd) * force;
+      }
+    } else if (speed_px_per_frame < 45) {
+      // Orbit
+      if (dd < ATTRACT_RADIUS * 1.5) {
+        const perpX = -ddy/dd, perpY = ddx/dd;
+        const orbitForce = ORBIT_SPEED * (dt/1000);
+        ax += perpX * orbitForce;
+        ay += perpY * orbitForce;
+        // Also gentle pull toward orbit radius
+        const radialForce = (dd - ORBIT_RADIUS) * 0.02;
+        ax += (ddx/dd) * radialForce;
+        ay += (ddy/dd) * radialForce;
+      }
+    } else {
+      // Scatter
+      if (dd < ATTRACT_RADIUS * 2) {
+        const force = SCATTER_SPEED * (dt/1000);
+        ax -= (ddx/dd) * force;
+        ay -= (ddy/dd) * force;
+      }
+    }
+
+    // Barrier avoidance
+    for (const b of barriers) {
+      const bx = b.x - p.x, by = b.y - p.y;
+      const bd = Math.sqrt(bx*bx + by*by);
+      if (bd < 60) {
+        ax -= (bx/bd) * 40 * (dt/1000);
+        ay -= (by/bd) * 40 * (dt/1000);
+      }
+    }
+
+    // Apply inertia
+    p.vx = p.vx * INERTIA + ax;
+    p.vy = p.vy * INERTIA + ay;
+
+    // Clamp velocity
+    const vMag = Math.sqrt(p.vx**2 + p.vy**2);
+    const maxV = 150 * (dt/1000);
+    if (vMag > maxV) {
+      p.vx = (p.vx/vMag) * maxV;
+      p.vy = (p.vy/vMag) * maxV;
+    }
+
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // Boundary bounce
+    const bnd = { x: W/2 - 10, y: H/2 - 10 };
+    if (p.x > bnd.x) { p.x = bnd.x; p.vx *= -0.5; }
+    if (p.x < -bnd.x) { p.x = -bnd.x; p.vx *= -0.5; }
+    if (p.y > bnd.y) { p.y = bnd.y; p.vy *= -0.5; }
+    if (p.y < -bnd.y) { p.y = -bnd.y; p.vy *= -0.5; }
+
+    flockPositions[i*3] = p.x;
+    flockPositions[i*3+1] = p.y;
+  }
+  if (flockGeometry) flockGeometry.attributes.position.needsUpdate = true;
+
+  // ── Predators ──
+  let predatorNear = false;
+  for (const pred of activePredators) {
+    // Hunt flock centroid
+    const fx = flockCx - pred.x;
+    const fy = flockCy - pred.y;
+    const fd = Math.sqrt(fx*fx + fy*fy) || 0.001;
+
+    if (dist(playerPos.x, playerPos.y, pred.x, pred.y) < 120) predatorNear = true;
+
+    let moveX = 0, moveY = 0;
+    if (pred.fleeTimer > 0) {
+      pred.fleeTimer -= dt;
+      // Flee from comet direction
+      moveX = -cometDir.x * 180 * (dt/1000);
+      moveY = -cometDir.y * 180 * (dt/1000);
+    } else {
+      const speed = (pred._speed || 22) * (dt/1000);
+      moveX = (fx/fd) * speed;
+      moveY = (fy/fd) * speed;
+
+      // Orbit partner
+      if (pred._orbitPartner) {
+        const partnerDist = dist(pred.x, pred.y, pred._orbitPartner.x, pred._orbitPartner.y);
+        const targetDist = 180;
+        const pullFactor = (partnerDist - targetDist) * 0.001;
+        const px = pred._orbitPartner.x - pred.x;
+        const py = pred._orbitPartner.y - pred.y;
+        const pdist = Math.sqrt(px*px+py*py)||0.001;
+        const perpX = -py/pdist, perpY = px/pdist;
+        moveX += perpX * 15 * (dt/1000);
+        moveY += perpY * 15 * (dt/1000);
+        moveX += (px/pdist) * pullFactor * dt;
+        moveY += (py/pdist) * pullFactor * dt;
+      }
+
+      // Orbit path
+      if (pred._orbit) {
+        pred._orbit.angle += pred._orbit.speed * (dt/1000);
+        pred._orbit.r = Math.max(80, pred._orbit.r - pred._orbit.inwardRate * (dt/1000));
+        const tx = pred._orbit.cx + Math.cos(pred._orbit.angle) * pred._orbit.r;
+        const ty = pred._orbit.cy + Math.sin(pred._orbit.angle) * pred._orbit.r;
+        const tox = tx - pred.x, toy = ty - pred.y;
+        const tod = Math.sqrt(tox*tox+toy*toy)||0.001;
+        moveX = (tox/tod) * (pred._speed || 18) * (dt/1000);
+        moveY = (toy/tod) * (pred._speed || 18) * (dt/1000);
+      }
+    }
+
+    pred.x += moveX;
+    pred.y += moveY;
+
+    // Rotate discs
+    pred.rotAngle = (pred.rotAngle || 0) + 35 * (Math.PI/180) * (dt/1000);
+    pred.discs.forEach((d, di) => {
+      d.angle += 35 * (Math.PI/180) * (dt/1000);
+      const nx = pred.x + Math.cos(d.angle) * d.pr;
+      const ny = pred.y + Math.sin(d.angle) * d.pr;
+      d.mesh.position.set(nx, ny, 1);
+    });
+
+    // Kill flock particles within 8px
+    for (let i = 0; i < FLOCK_COUNT; i++) {
+      const p = flockParticles[i];
+      if (!p.alive) continue;
+      pred.discs.forEach(d => {
+        const ddx = p.x - d.mesh.position.x;
+        const ddy = p.y - d.mesh.position.y;
+        const dd2 = ddx*ddx + ddy*ddy;
+        if (dd2 < 64) { // 8px
+          p.alive = false;
+          flockColors[i*3] = 0; flockColors[i*3+1] = 0; flockColors[i*3+2] = 0;
+          flockPositions[i*3+2] = -999; // sink below view
+          if (flockGeometry) flockGeometry.attributes.color.needsUpdate = true;
+          playDeath();
+        }
+      });
+    }
+  }
+  if (flockGeometry) flockGeometry.attributes.position.needsUpdate = true;
+
+  // ── Audio ──
+  updateAudio(predatorNear, stillTimer);
+
+  // ── Win/lose check ──
+  const totalAlive = flockParticles.filter(p => p.alive).length;
+  if (totalAlive < 30 && gameState === 'playing') {
+    gameState = 'gameover';
+    document.getElementById('gameOver').classList.add('show');
+    return;
+  }
+
+  // Count particles in goal zone
+  let inGoal = 0;
+  for (let i = 0; i < FLOCK_COUNT; i++) {
+    const p = flockParticles[i];
+    if (!p.alive) continue;
+    if (dist(p.x, p.y, goalPos.x, goalPos.y) < GOAL_RADIUS) inGoal++;
+  }
+
+  if (inGoal >= 30 && gameState === 'playing') {
+    // Win!
+    const lvlMultiplier = currentLevel + 1;
+    score += inGoal * lvlMultiplier * 10;
+    gameState = 'levelcomplete';
+    playGoal();
+    const ws = document.getElementById('winScreen');
+    document.getElementById('winTitle').textContent = currentLevel < LEVELS.length - 1 ? 'LEVEL CLEAR!' : 'YOU WIN!';
+    document.getElementById('winSub').textContent = `${inGoal} particles delivered · Score: ${score}\n${currentLevel < LEVELS.length - 1 ? 'Tap for next level' : 'Tap to play again'}`;
+    ws.classList.add('show');
+  }
+
+  updateHUD();
+}
+
+function drawUI() {
+  uiCtx.clearRect(0, 0, W, H);
+
+  if (gameState === 'playing' || gameState === 'levelcomplete') {
+    // Draw charge arc around player
+    if (!cometActive && stillTimer > 200) {
+      const ratio = Math.min(stillTimer / 4000, 1);
+      const sp = worldToScreen(playerPos.x, playerPos.y);
+      uiCtx.save();
+      uiCtx.strokeStyle = `rgba(240, 200, 66, ${0.4 + ratio * 0.6})`;
+      uiCtx.lineWidth = 2;
+      uiCtx.beginPath();
+      uiCtx.arc(sp.x, sp.y, 22, -Math.PI/2, -Math.PI/2 + ratio * Math.PI * 2);
+      uiCtx.stroke();
+      uiCtx.restore();
+    }
+
+    // Draw goal zone label
+    const gsp = worldToScreen(goalPos.x, goalPos.y);
+    uiCtx.save();
+    uiCtx.fillStyle = 'rgba(240,200,66,0.55)';
+    uiCtx.font = '11px Georgia';
+    uiCtx.textAlign = 'center';
+    uiCtx.fillText('GOAL', gsp.x, gsp.y - GOAL_RADIUS * (H / (H)) - 8);
+    uiCtx.restore();
+  }
+}
+
+// ─── RENDER LOOP ──────────────────────────────────────────────────────────────
+function tick(now) {
+  requestAnimationFrame(tick);
+  const dt = Math.min(now - lastTime, 50); // cap at 50ms
+  lastTime = now;
+
+  if (gameState === 'start') {
+    updateIdle(dt);
+  } else if (gameState === 'playing') {
+    updateGame(dt);
+  }
+
+  // Goal ring pulse
+  const gPulse = 0.5 + Math.sin(now * 0.002) * 0.15;
+  goalMat.opacity = gPulse;
+
+  drawUI();
+  composer.render();
+}
+
+// ─── BOOTSTRAP ───────────────────────────────────────────────────────────────
+setupIdleAnimation();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
