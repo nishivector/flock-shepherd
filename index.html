@@ -1022,57 +1022,93 @@ function updateGame(dt) {
   }
 
   // ── Flock physics ──
-  let flockCx = 0, flockCy = 0, aliveCount = 0;
-  for (let i = 0; i < FLOCK_COUNT; i++) {
-    const p = flockParticles[i];
-    if (!p.alive) continue;
-    flockCx += p.x; flockCy += p.y;
-    aliveCount++;
-  }
-  if (aliveCount > 0) { flockCx /= aliveCount; flockCy /= aliveCount; }
+  // ── Flock physics: Reynolds boids + gentle player influence ──
+  // Boid rule radii & strengths
+  const SEP_RADIUS = 28,  SEP_FORCE = 90;   // push apart when too close
+  const ALN_RADIUS = 65,  ALN_FORCE = 12;   // match neighbours' velocity
+  const COH_RADIUS = 100, COH_FORCE = 6;    // drift toward local centre
 
-  const ATTRACT_RADIUS = 220, ATTRACT_SPEED = 35;
-  const ORBIT_RADIUS = 90, ORBIT_SPEED = 28;
+  // Player influence — intentionally weaker so boids feel autonomous
+  const ATTRACT_RADIUS = 220, ATTRACT_SPEED = 18;
+  const ORBIT_RADIUS = 95,  ORBIT_SPEED = 20;
   const SCATTER_SPEED = 55;
-  const INERTIA = Math.pow(0.5, (dt/1000) / 2.0); // half-life 2000ms
+  const INERTIA = Math.pow(0.5, (dt/1000) / 2.2); // half-life ~2.2s
+  const dtS = dt / 1000;
 
   for (let i = 0; i < FLOCK_COUNT; i++) {
     const p = flockParticles[i];
     if (!p.alive) continue;
     if (cometActive && cometParticles.includes(i)) continue;
 
+    // ── Reynolds boids: gather neighbour data ──
+    let sepX = 0, sepY = 0;
+    let alnVx = 0, alnVy = 0, alnN = 0;
+    let cohX = 0, cohY = 0, cohN = 0;
+
+    for (let j = 0; j < FLOCK_COUNT; j++) {
+      if (i === j) continue;
+      const q = flockParticles[j];
+      if (!q.alive) continue;
+      const nx = p.x - q.x, ny = p.y - q.y;
+      const nd = Math.sqrt(nx*nx + ny*ny) || 0.001;
+
+      if (nd < SEP_RADIUS) {
+        // Separation: inverse-square push — closer = stronger
+        const w = (SEP_RADIUS - nd) / SEP_RADIUS;
+        sepX += (nx/nd) * w;
+        sepY += (ny/nd) * w;
+      }
+      if (nd < ALN_RADIUS) { alnVx += q.vx; alnVy += q.vy; alnN++; }
+      if (nd < COH_RADIUS) { cohX += q.x;  cohY += q.y;  cohN++; }
+    }
+
+    let ax = 0, ay = 0;
+
+    // Separation
+    ax += sepX * SEP_FORCE * dtS;
+    ay += sepY * SEP_FORCE * dtS;
+
+    // Alignment: steer toward average neighbour velocity
+    if (alnN > 0) {
+      ax += (alnVx/alnN - p.vx) * ALN_FORCE * dtS;
+      ay += (alnVy/alnN - p.vy) * ALN_FORCE * dtS;
+    }
+
+    // Cohesion: drift toward local centre of mass
+    if (cohN > 0) {
+      const tcx = cohX/cohN - p.x, tcy = cohY/cohN - p.y;
+      const td = Math.sqrt(tcx*tcx + tcy*tcy) || 0.001;
+      ax += (tcx/td) * COH_FORCE * dtS;
+      ay += (tcy/td) * COH_FORCE * dtS;
+    }
+
+    // ── Player influence (gentle nudge, not magnetic pull) ──
     const ddx = playerPos.x - p.x;
     const ddy = playerPos.y - p.y;
     const dd = Math.sqrt(ddx*ddx + ddy*ddy) || 0.001;
 
-    let ax = 0, ay = 0;
-    const speed_px_per_frame = playerSpeed; // px per frame approx
-
-    if (speed_px_per_frame < 8) {
-      // Attract
+    if (playerSpeed < 8) {
+      // Still: gentle attract within radius
       if (dd < ATTRACT_RADIUS) {
-        const force = ATTRACT_SPEED * (dt/1000) * (1 - dd/ATTRACT_RADIUS);
+        const force = ATTRACT_SPEED * dtS * (1 - dd/ATTRACT_RADIUS);
         ax += (ddx/dd) * force;
         ay += (ddy/dd) * force;
       }
-    } else if (speed_px_per_frame < 45) {
-      // Orbit
+    } else if (playerSpeed < 45) {
+      // Moving: boids orbit the node
       if (dd < ATTRACT_RADIUS * 1.5) {
         const perpX = -ddy/dd, perpY = ddx/dd;
-        const orbitForce = ORBIT_SPEED * (dt/1000);
-        ax += perpX * orbitForce;
-        ay += perpY * orbitForce;
-        // Also gentle pull toward orbit radius
-        const radialForce = (dd - ORBIT_RADIUS) * 0.02;
+        ax += perpX * ORBIT_SPEED * dtS;
+        ay += perpY * ORBIT_SPEED * dtS;
+        const radialForce = (dd - ORBIT_RADIUS) * 0.015;
         ax += (ddx/dd) * radialForce;
         ay += (ddy/dd) * radialForce;
       }
     } else {
-      // Scatter
+      // Fast: boids scatter (predator-like)
       if (dd < ATTRACT_RADIUS * 2) {
-        const force = SCATTER_SPEED * (dt/1000);
-        ax -= (ddx/dd) * force;
-        ay -= (ddy/dd) * force;
+        ax -= (ddx/dd) * SCATTER_SPEED * dtS;
+        ay -= (ddy/dd) * SCATTER_SPEED * dtS;
       }
     }
 
@@ -1081,34 +1117,31 @@ function updateGame(dt) {
       const bx = b.x - p.x, by = b.y - p.y;
       const bd = Math.sqrt(bx*bx + by*by);
       if (bd < 60) {
-        ax -= (bx/bd) * 40 * (dt/1000);
-        ay -= (by/bd) * 40 * (dt/1000);
+        ax -= (bx/bd) * 40 * dtS;
+        ay -= (by/bd) * 40 * dtS;
       }
     }
 
-    // Apply inertia
+    // Apply inertia & integrate
     p.vx = p.vx * INERTIA + ax;
     p.vy = p.vy * INERTIA + ay;
 
-    // Clamp velocity
+    // Speed cap
     const vMag = Math.sqrt(p.vx**2 + p.vy**2);
-    const maxV = 150 * (dt/1000);
-    if (vMag > maxV) {
-      p.vx = (p.vx/vMag) * maxV;
-      p.vy = (p.vy/vMag) * maxV;
-    }
+    const maxV = 150 * dtS;
+    if (vMag > maxV) { p.vx = (p.vx/vMag)*maxV; p.vy = (p.vy/vMag)*maxV; }
 
     p.x += p.vx;
     p.y += p.vy;
 
     // Boundary bounce
     const bnd = { x: W/2 - 10, y: H/2 - 10 };
-    if (p.x > bnd.x) { p.x = bnd.x; p.vx *= -0.5; }
+    if (p.x >  bnd.x) { p.x =  bnd.x; p.vx *= -0.5; }
     if (p.x < -bnd.x) { p.x = -bnd.x; p.vx *= -0.5; }
-    if (p.y > bnd.y) { p.y = bnd.y; p.vy *= -0.5; }
+    if (p.y >  bnd.y) { p.y =  bnd.y; p.vy *= -0.5; }
     if (p.y < -bnd.y) { p.y = -bnd.y; p.vy *= -0.5; }
 
-    flockPositions[i*3] = p.x;
+    flockPositions[i*3]   = p.x;
     flockPositions[i*3+1] = p.y;
   }
   if (flockGeometry) flockGeometry.attributes.position.needsUpdate = true;
